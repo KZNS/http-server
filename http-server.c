@@ -40,10 +40,10 @@ int socket_listen(int port)
     fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0)
     {
-        printf("create socket error! port: %d\n", port);
+        printf("! socket create error, port: %d\n", port);
         exit(-1);
     }
-    printf("socket ready! fd: %d\n", fd);
+    printf("socket ready, port %d fd: %d\n", port, fd);
 
     struct sockaddr_in srvaddr;
     srvaddr.sin_family = AF_INET;
@@ -54,14 +54,14 @@ int socket_listen(int port)
     res = bind(fd, (struct sockaddr *)&srvaddr, sizeof(srvaddr));
     if (res < 0)
     {
-        printf("bind error! port: %d fd: %d\n", port, fd);
+        printf("! socket bind error, port: %d fd: %d\n", port, fd);
         close(fd);
         exit(-1);
     }
-    printf("bind ready! port: %d fd: %d\n", port, fd);
+    printf("socket bind ready, port: %d fd: %d\n", port, fd);
 
     listen(fd, 10);
-    printf("waiting...\n");
+    printf("socket listening, port: %d fd: %d\n", port, fd);
 
     return fd;
 }
@@ -75,15 +75,13 @@ int socket_accept(int fd)
     cfd = accept(fd, (struct sockaddr *)&caddr, (socklen_t *)&len);
     if (cfd < 0)
     {
-        printf("accept error! fd: %d\n", fd);
+        printf("! socket accept error, fd: %d\n", fd);
         close(fd);
         exit(-1);
     }
-
-    /*输出客户机的信息*/
     char *ip = inet_ntoa(caddr.sin_addr);
-    printf("ip %s connect to %d-%d\n", ip, fd, cfd);
 
+    printf("socket accepted, fd: %d cfd: %d ip: %s\n", fd, cfd, ip);
     return cfd;
 }
 
@@ -103,7 +101,7 @@ void *http_server()
     close(fd);
 }
 
-SSL_CTX *SSL_CTX_init()
+SSL_CTX *ssl_ctx_init()
 {
     SSL_load_error_strings();
     OpenSSL_add_all_algorithms();
@@ -112,61 +110,67 @@ SSL_CTX *SSL_CTX_init()
     SSL_CTX *ctx = SSL_CTX_new(SSLv23_server_method());
     if (ctx == NULL)
     {
-        printf("SSL_CTX_new error!\n");
+        printf("! ssl ctx new error\n");
         exit(-1);
     }
+    printf("ssl ctx initialized\n");
     return ctx;
 }
 
-void SSL_CTX_load_key(SSL_CTX *ctx)
+void ssl_ctx_config(SSL_CTX *ctx)
 {
     if (SSL_CTX_use_certificate_file(ctx, "./keys/cnlab.cert", SSL_FILETYPE_PEM) <= 0)
     {
-        printf("SSL_CTX_use_certificate_file fail\n");
+        printf("! ssl ctx 'SSL_CTX_use_certificate_file' error\n");
         exit(-1);
     }
     if (SSL_CTX_use_PrivateKey_file(ctx, "./keys/cnlab.prikey", SSL_FILETYPE_PEM) <= 0)
     {
-        printf("SSL_CTX_use_PrivateKey_file fail\n");
+        printf("! ssl ctx 'SSL_CTX_use_PrivateKey_file' error\n");
         exit(-1);
     }
     if (SSL_CTX_check_private_key(ctx) <= 0)
     {
-        printf("SSL key check fail\n");
+        printf("! ssl ctx 'SSL_CTX_check_private_key' error\n");
         exit(-1);
     }
 
     SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
     SSL_CTX_set_cipher_list(ctx, "RC4-MD5");
     SSL_CTX_set_mode(ctx, SSL_MODE_AUTO_RETRY);
+
+    printf("ssl ctx config pass\n");
+}
+
+SSL *ssl_accept(SSL_CTX *ctx, int cfd)
+{
+    SSL *ssl = SSL_new(ctx);
+    SSL_set_fd(ssl, cfd);
+
+    int retcode = SSL_accept(ssl);
+    if (retcode == 0)
+    {
+        printf("ssl accept error, code: %d\n", SSL_get_error(ssl, retcode));
+        exit(-1);
+    }
+
+    printf("ssl accepted, cfd: %d\n", cfd);
+    return ssl;
 }
 
 void *https_server()
 {
-    SSL_CTX *ctx = SSL_CTX_init();
-    SSL_CTX_load_key(ctx);
-
     int fd = socket_listen(HTTPS_PORT);
 
-    char buff[BUF_SIZE] = {0};
+    SSL_CTX *ctx = ssl_ctx_init();
+    ssl_ctx_config(ctx);
+
     while (1)
     {
         int cfd = socket_accept(fd);
+        SSL *ssl = ssl_accept(ctx, cfd);
 
-        SSL *ssl = SSL_new(ctx);
-        SSL_set_fd(ssl, cfd);
-
-        int retcode = SSL_accept(ssl);
-        if (retcode == 0)
-        {
-            printf("SSL_accept error: %d\n", SSL_get_error(ssl, retcode));
-            exit(-1);
-        }
-        printf("SSL_accept succeeded\n");
-
-        bzero(buff, BUF_SIZE);
-        strcpy(buff, MESSAGE200);
-        SSL_write(ssl, buff, strlen(buff));
+        SSL_write(ssl, MESSAGE200, strlen(MESSAGE200));
 
         SSL_shutdown(ssl);
         SSL_free(ssl);
@@ -174,6 +178,7 @@ void *https_server()
     }
 
     SSL_CTX_free(ctx);
+
     close(fd);
 }
 
