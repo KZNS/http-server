@@ -34,10 +34,9 @@
 int socket_listen(int port)
 {
     int fd;
-    int sockopt = 1;
     int res;
 
-    /*创建一个套接字*/
+    // 创建一个套接字
     fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0)
     {
@@ -49,11 +48,9 @@ int socket_listen(int port)
     struct sockaddr_in srvaddr;
     srvaddr.sin_family = AF_INET;
     srvaddr.sin_port = htons(port);
-    srvaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    srvaddr.sin_addr.s_addr = INADDR_ANY;
 
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sockopt, sizeof(int));
-
-    /*bind, 将网络地址与端口绑定*/
+    // 将网络地址与端口绑定
     res = bind(fd, (struct sockaddr *)&srvaddr, sizeof(srvaddr));
     if (res < 0)
     {
@@ -75,7 +72,7 @@ int socket_accept(int fd)
     socklen_t len = sizeof(caddr);
     int cfd;
 
-    cfd = accept(fd, (struct sockaddr *)&caddr, &len);
+    cfd = accept(fd, (struct sockaddr *)&caddr, (socklen_t *)&len);
     if (cfd < 0)
     {
         printf("accept error! fd: %d\n", fd);
@@ -85,16 +82,7 @@ int socket_accept(int fd)
 
     /*输出客户机的信息*/
     char *ip = inet_ntoa(caddr.sin_addr);
-
-    printf("ip %s connect to %d\n", ip, fd);
-
-    /*输出客户机请求的信息*/
-    char buff[BUF_SIZE] = {0};
-    int size = read(cfd, buff, sizeof(buff));
-
-    printf("Request information: ");
-    printf("%s\n", buff);
-    printf("%d bytes\n", size);
+    printf("ip %s connect to %d-%d\n", ip, fd, cfd);
 
     return cfd;
 }
@@ -118,7 +106,6 @@ void *http_server()
 SSL_CTX *SSL_CTX_init()
 {
     SSL_load_error_strings();
-    SSLeay_add_ssl_algorithms();
     OpenSSL_add_all_algorithms();
     SSL_library_init();
 
@@ -133,12 +120,12 @@ SSL_CTX *SSL_CTX_init()
 
 void SSL_CTX_load_key(SSL_CTX *ctx)
 {
-    if (SSL_CTX_use_certificate_file(ctx, "keys/cnlab.cert", SSL_FILETYPE_PEM) <= 0)
+    if (SSL_CTX_use_certificate_file(ctx, "./keys/cnlab.cert", SSL_FILETYPE_PEM) <= 0)
     {
         printf("SSL_CTX_use_certificate_file fail\n");
         exit(-1);
     }
-    if (SSL_CTX_use_PrivateKey_file(ctx, "keys/cnlab.prikey", SSL_FILETYPE_PEM) <= 0)
+    if (SSL_CTX_use_PrivateKey_file(ctx, "./keys/cnlab.prikey", SSL_FILETYPE_PEM) <= 0)
     {
         printf("SSL_CTX_use_PrivateKey_file fail\n");
         exit(-1);
@@ -149,7 +136,9 @@ void SSL_CTX_load_key(SSL_CTX *ctx)
         exit(-1);
     }
 
-    SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, 0);
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
+    SSL_CTX_set_cipher_list(ctx, "RC4-MD5");
+    SSL_CTX_set_mode(ctx, SSL_MODE_AUTO_RETRY);
 }
 
 void *https_server()
@@ -160,20 +149,16 @@ void *https_server()
     int fd = socket_listen(HTTPS_PORT);
 
     char buff[BUF_SIZE] = {0};
-    int retcode;
     while (1)
     {
         int cfd = socket_accept(fd);
-        // int cfd = accept(fd, 0, 0);
+
         SSL *ssl = SSL_new(ctx);
         SSL_set_fd(ssl, cfd);
-        SSL_set_accept_state(ssl);
 
-        printf("SSL_accept linking...\n");
-        retcode = SSL_accept(ssl);
-        if (retcode <= 0)
+        int retcode = SSL_accept(ssl);
+        if (retcode == 0)
         {
-            printf("in\n");
             printf("SSL_accept error: %d\n", SSL_get_error(ssl, retcode));
             exit(-1);
         }
@@ -186,9 +171,9 @@ void *https_server()
         SSL_shutdown(ssl);
         SSL_free(ssl);
         close(cfd);
-        SSL_CTX_free(ctx);
     }
 
+    SSL_CTX_free(ctx);
     close(fd);
 }
 
