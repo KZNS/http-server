@@ -6,10 +6,14 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <fcntl.h>
+
 #include <pthread.h>
+
+#include <openssl/ssl.h>
 
 #define HTTP_PORT 8080
 #define HTTPS_PORT 10443
+#define BUF_SIZE 8192
 #define MESSAGE200 "HTTP/1.1 200 OK\r\n"    \
                    "Content-Length: 11\r\n" \
                    "\r\n"                   \
@@ -29,7 +33,6 @@
 
 int socket_listen(int port)
 {
-    struct sockaddr_in srvaddr;
     int locfd;
     int sockopt = 1;
     int res;
@@ -43,6 +46,7 @@ int socket_listen(int port)
     }
     printf("socket ready! locfd: %d\n", locfd);
 
+    struct sockaddr_in srvaddr;
     srvaddr.sin_family = AF_INET;
     srvaddr.sin_port = htons(port);
     srvaddr.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -59,9 +63,9 @@ int socket_listen(int port)
     }
     printf("bind ready! port: %d locfd: %d\n", port, locfd);
 
-    /*listen, 监听端口*/
     listen(locfd, 10);
     printf("waiting...\n");
+
     return locfd;
 }
 
@@ -85,7 +89,7 @@ int socket_accept(int locfd)
     printf("ip %s connect to %d\n", ip, locfd);
 
     /*输出客户机请求的信息*/
-    char buff[1024] = {0};
+    char buff[BUF_SIZE] = {0};
     int size = read(clifd, buff, sizeof(buff));
 
     printf("Request information: ");
@@ -111,20 +115,81 @@ void *http_server()
     close(locfd);
 }
 
-void *https_server()
+SSL_CTX *SSL_CTX_init()
 {
-    int locfd = socket_listen(HTTPS_PORT);
+    SSL_load_error_strings();
+    SSLeay_add_ssl_algorithms();
+    OpenSSL_add_all_algorithms();
+    SSL_library_init();
 
-    while (1)
+    SSL_CTX *ctx = SSL_CTX_new(SSLv23_server_method());
+    if (ctx == NULL)
     {
-        int clifd = socket_accept(locfd);
+        printf("SSL_CTX_new error!\n");
+        exit(-1);
+    }
+    return ctx;
+}
 
-        write(clifd, MESSAGE200, strlen(MESSAGE200));
-
-        close(clifd);
+void SSL_CTX_load_key(SSL_CTX *ctx)
+{
+    if (SSL_CTX_use_certificate_file(ctx, "keys/cnlab.cert", SSL_FILETYPE_PEM) <= 0)
+    {
+        printf("SSL_CTX_use_certificate_file fail\n");
+        exit(-1);
+    }
+    if (SSL_CTX_use_PrivateKey_file(ctx, "keys/cnlab.prikey", SSL_FILETYPE_PEM) <= 0)
+    {
+        printf("SSL_CTX_use_PrivateKey_file fail\n");
+        exit(-1);
+    }
+    if (SSL_CTX_check_private_key(ctx) <= 0)
+    {
+        printf("SSL key check fail\n");
+        exit(-1);
     }
 
-    close(locfd);
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, 0);
+}
+
+void *https_server()
+{
+    SSL_CTX *ctx = SSL_CTX_init();
+    SSL_CTX_load_key(ctx);
+
+    int fd = socket_listen(HTTPS_PORT);
+
+    char buff[BUF_SIZE] = {0};
+    int retcode;
+    while (1)
+    {
+        int cfd = socket_accept(fd);
+        // int cfd = accept(fd, 0, 0);
+        SSL *ssl = SSL_new(ctx);
+        SSL_set_fd(ssl, cfd);
+        SSL_set_accept_state(ssl);
+
+        printf("SSL_accept linking...\n");
+        retcode = SSL_accept(ssl);
+        if (retcode <= 0)
+        {
+            printf("in\n");
+            printf("SSL_accept error: %d\n", SSL_get_error(ssl, retcode));
+            exit(-1);
+        }
+        printf("SSL_accept succeeded\n");
+
+        bzero(buff, BUF_SIZE);
+        strcpy(buff, MESSAGE200);
+        SSL_write(ssl, buff, strlen(buff));
+
+        SSL_shutdown(ssl);
+        SSL_free(ssl);
+        close(cfd);
+        SSL_CTX_free(ctx);
+    }
+
+    close(fd);
 }
 
 int main()
