@@ -33,86 +33,86 @@
 
 int socket_listen(int port)
 {
-    int locfd;
+    int fd;
     int sockopt = 1;
     int res;
 
     /*创建一个套接字*/
-    locfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (locfd < 0)
+    fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0)
     {
         printf("create socket error! port: %d\n", port);
         exit(-1);
     }
-    printf("socket ready! locfd: %d\n", locfd);
+    printf("socket ready! fd: %d\n", fd);
 
     struct sockaddr_in srvaddr;
     srvaddr.sin_family = AF_INET;
     srvaddr.sin_port = htons(port);
     srvaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    setsockopt(locfd, SOL_SOCKET, SO_REUSEADDR, &sockopt, sizeof(int));
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sockopt, sizeof(int));
 
     /*bind, 将网络地址与端口绑定*/
-    res = bind(locfd, (struct sockaddr *)&srvaddr, sizeof(srvaddr));
+    res = bind(fd, (struct sockaddr *)&srvaddr, sizeof(srvaddr));
     if (res < 0)
     {
-        printf("bind error! port: %d locfd: %d\n", port, locfd);
-        close(locfd);
+        printf("bind error! port: %d fd: %d\n", port, fd);
+        close(fd);
         exit(-1);
     }
-    printf("bind ready! port: %d locfd: %d\n", port, locfd);
+    printf("bind ready! port: %d fd: %d\n", port, fd);
 
-    listen(locfd, 10);
+    listen(fd, 10);
     printf("waiting...\n");
 
-    return locfd;
+    return fd;
 }
 
-int socket_accept(int locfd)
+int socket_accept(int fd)
 {
-    struct sockaddr_in cliaddr;
-    socklen_t len = sizeof(cliaddr);
-    int clifd;
+    struct sockaddr_in caddr;
+    socklen_t len = sizeof(caddr);
+    int cfd;
 
-    clifd = accept(locfd, (struct sockaddr *)&cliaddr, &len);
-    if (clifd < 0)
+    cfd = accept(fd, (struct sockaddr *)&caddr, &len);
+    if (cfd < 0)
     {
-        printf("accept error! locfd: %d\n", locfd);
-        close(locfd);
+        printf("accept error! fd: %d\n", fd);
+        close(fd);
         exit(-1);
     }
 
     /*输出客户机的信息*/
-    char *ip = inet_ntoa(cliaddr.sin_addr);
+    char *ip = inet_ntoa(caddr.sin_addr);
 
-    printf("ip %s connect to %d\n", ip, locfd);
+    printf("ip %s connect to %d\n", ip, fd);
 
     /*输出客户机请求的信息*/
     char buff[BUF_SIZE] = {0};
-    int size = read(clifd, buff, sizeof(buff));
+    int size = read(cfd, buff, sizeof(buff));
 
     printf("Request information: ");
     printf("%s\n", buff);
     printf("%d bytes\n", size);
 
-    return clifd;
+    return cfd;
 }
 
 void *http_server()
 {
-    int locfd = socket_listen(HTTP_PORT);
+    int fd = socket_listen(HTTP_PORT);
 
     while (1)
     {
-        int clifd = socket_accept(locfd);
+        int cfd = socket_accept(fd);
 
-        write(clifd, MESSAGE301, strlen(MESSAGE301));
+        write(cfd, MESSAGE301, strlen(MESSAGE301));
 
-        close(clifd);
+        close(cfd);
     }
 
-    close(locfd);
+    close(fd);
 }
 
 SSL_CTX *SSL_CTX_init()
