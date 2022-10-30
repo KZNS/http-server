@@ -1,23 +1,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include <sys/socket.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-#include <fcntl.h>
 
 #include <pthread.h>
 
 #include <openssl/ssl.h>
 
+#include "http_parser.h"
+#include "resource_menager.h"
+
 #define HTTP_PORT 8080
 #define HTTPS_PORT 10443
 #define BUF_SIZE 8192
 #define MESSAGE200 "HTTP/1.1 200 OK\r\n"    \
-                   "Content-Length: 11\r\n" \
+                   "Content-Length: %d\r\n" \
                    "\r\n"                   \
-                   "hello world"
+                   "%s"
 #define MESSAGE301 "HTTP/1.1 301 Moved Permanently\r\n"        \
                    "Location: https://10.0.0.1/index.html\r\n" \
                    "\r\n"                                      \
@@ -25,11 +27,11 @@
 #define MESSAGE206 "HTTP/1.1 206 Partial Content\r\n" \
                    "Content-Length: 11\r\n"           \
                    "\r\n"                             \
-                   "hello world"
+                   "206 Partial Content"
 #define MESSAGE404 "HTTP/1.1 404 Not Found\r\n" \
-                   "Content-Length: 11\r\n"     \
+                   "Content-Length: 13\r\n"     \
                    "\r\n"                       \
-                   "hello world"
+                   "404 Not Found"
 
 int socket_listen(int port)
 {
@@ -170,11 +172,33 @@ void *https_server()
         int cfd = socket_accept(fd);
         SSL *ssl = ssl_accept(ctx, cfd);
 
-        SSL_write(ssl, MESSAGE200, strlen(MESSAGE200));
+        char buf[BUF_SIZE + 1] = {0};
+        SSL_read(ssl, buf, BUF_SIZE);
+        HTTP_parser http = http_parser(buf);
+        printf("GET %s\n", http.path);
+
+        char *fbuf;
+        int fsize = read_file(http.path + 1, &fbuf);
+        if (fsize >= 0)
+        {
+            printf("200\n");
+            char *wbuf = malloc(strlen(MESSAGE200) + fsize + 10);
+            sprintf(wbuf, MESSAGE200, fsize, fbuf);
+            printf("%s\n", wbuf);
+            SSL_write(ssl, wbuf, strlen(wbuf));
+            free(fbuf);
+            free(wbuf);
+        }
+        else
+        {
+            printf("404\n");
+            SSL_write(ssl, MESSAGE404, strlen(MESSAGE404));
+        }
 
         SSL_shutdown(ssl);
         SSL_free(ssl);
         close(cfd);
+        printf("**** ssl shutdown\n");
     }
 
     SSL_CTX_free(ctx);

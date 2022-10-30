@@ -1,0 +1,1 @@
+int read_file(char *file_name, char **read_file);
