@@ -13,22 +13,19 @@
 #include "http_parser.h"
 #include "resource_menager.h"
 
-#define HTTP_PORT 80
-#define HTTPS_PORT 443
+#define HTTP_PORT 8080
+#define HTTPS_PORT 10443
 #define BUF_SIZE 8192
 #define MESSAGE200 "HTTP/1.1 200 OK\r\n"    \
                    "Content-Length: %d\r\n" \
-                   "\r\n"                   \
-                   "%s"
+                   "\r\n"
 #define MESSAGE301 "HTTP/1.1 301 Moved Permanently\r\n" \
                    "Location: https://%s%s\r\n"         \
-                   "\r\n"                               \
-                   ""
+                   "\r\n"
 #define MESSAGE206 "HTTP/1.1 206 Partial Content\r\n"  \
                    "Content-Length: %d\r\n"            \
                    "Content-Range: bytes %d-%d/%d\r\n" \
-                   "\r\n"                              \
-                   "%s"
+                   "\r\n"
 #define MESSAGE404 "HTTP/1.1 404 Not Found\r\n" \
                    "Content-Length: 13\r\n"     \
                    "\r\n"                       \
@@ -170,7 +167,7 @@ SSL *ssl_accept(SSL_CTX *ctx, int cfd)
     SSL_set_fd(ssl, cfd);
 
     int retcode = SSL_accept(ssl);
-    if (retcode == 0)
+    if (retcode <= 0)
     {
         printf("ssl accept error, code: %d\n", SSL_get_error(ssl, retcode));
         exit(-1);
@@ -205,22 +202,24 @@ void *https_server()
             if (http.range_raw == NULL)
             {
                 wbuf = malloc(strlen(MESSAGE200) + fsize + 10);
-                sprintf(wbuf, MESSAGE200, fsize, fbuf);
+                sprintf(wbuf, MESSAGE200, fsize);
+                int hsize = strlen(wbuf);
+                memcpy(wbuf + hsize, fbuf, fsize);
                 printf("200\n");
-                SSL_write(ssl, wbuf, strlen(wbuf));
+                SSL_write(ssl, wbuf, hsize + fsize);
             }
             else
             {
                 int left = http.range_left;
                 int right = http.range_right == -1 ? fsize - 1 : http.range_right;
-                int len = right - left + 1;
-                wbuf = malloc(strlen(MESSAGE206) + len + 10);
-                char *part = malloc(len + 1);
-                strncpy(part, fbuf + left, len);
-                sprintf(wbuf, MESSAGE206, len, left, right, fsize, part);
-
+                int psize = right - left + 1;
+                wbuf = malloc(strlen(MESSAGE206) + psize + 10);
+                char *part = malloc(psize);
+                sprintf(wbuf, MESSAGE206, psize, left, right, fsize);
+                int hsize = strlen(wbuf);
+                memcpy(wbuf + hsize, fbuf + left, psize);
                 printf("206\n");
-                SSL_write(ssl, wbuf, strlen(wbuf));
+                SSL_write(ssl, wbuf, hsize + psize);
                 free(part);
             }
             free(fbuf);

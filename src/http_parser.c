@@ -15,6 +15,10 @@ HTTP_parser http_parser(char *s)
     http.raw = malloc(strlen(s) + 1);
     strcpy(http.raw, s);
     printf("---- http.raw\n%s----\n", http.raw);
+    if (strlen(http.raw) == 0)
+    {
+        return http;
+    }
 
     char *method = strsep(&s, " ");
     if (strcmp(method, "GET") == 0)

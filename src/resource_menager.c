@@ -3,7 +3,7 @@
 
 int read_file(char *file_name, char **ret_buf)
 {
-    FILE *f = fopen(file_name, "r");
+    FILE *f = fopen(file_name, "rb");
     int file_size;
     if (f)
     {
