@@ -24,9 +24,10 @@
                    "Location: https://%s%s\r\n"         \
                    "\r\n"                               \
                    ""
-#define MESSAGE206 "HTTP/1.1 206 Partial Content\r\n" \
-                   "Content-Length: %d\r\n"           \
-                   "\r\n"                             \
+#define MESSAGE206 "HTTP/1.1 206 Partial Content\r\n"  \
+                   "Content-Length: %d\r\n"            \
+                   "Content-Range: bytes %d-%d/%d\r\n" \
+                   "\r\n"                              \
                    "%s"
 #define MESSAGE404 "HTTP/1.1 404 Not Found\r\n" \
                    "Content-Length: 13\r\n"     \
@@ -216,7 +217,7 @@ void *https_server()
                 wbuf = malloc(strlen(MESSAGE206) + len + 10);
                 char *part = malloc(len + 1);
                 strncpy(part, fbuf + left, len);
-                sprintf(wbuf, MESSAGE206, right - left + 1, part);
+                sprintf(wbuf, MESSAGE206, len, left, right, fsize, part);
 
                 printf("206\n");
                 SSL_write(ssl, wbuf, strlen(wbuf));
