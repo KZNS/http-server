@@ -7,6 +7,10 @@
 HTTP_parser http_parser(char *s)
 {
     HTTP_parser http;
+    http.path = NULL;
+    http.version = NULL;
+    http.host = NULL;
+    http.range_raw = NULL;
 
     http.raw = malloc(strlen(s) + 1);
     strcpy(http.raw, s);
@@ -53,6 +57,28 @@ HTTP_parser http_parser(char *s)
         if (strcmp(key, "Host") == 0)
         {
             http.host = value;
+        }
+        else if (strcmp(key, "Range") == 0)
+        {
+            http.range_raw = value;
+            char *eqp = strchr(value, '=');
+            char *mnp = strchr(value, '-');
+            if (*(eqp + 1) != '-')
+            {
+                sscanf(eqp + 1, "%d", &http.range_left);
+            }
+            else
+            {
+                http.range_left = 0;
+            }
+            if (*(mnp + 1) != '\0')
+            {
+                sscanf(mnp + 1, "%d", &http.range_right);
+            }
+            else
+            {
+                http.range_right = -1;
+            }
         }
         else
         {

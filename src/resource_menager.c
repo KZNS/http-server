@@ -7,7 +7,7 @@ int read_file(char *file_name, char **ret_buf)
     int file_size;
     if (f)
     {
-        printf("opened\n");
+        printf("file opened\n");
         fseek(f, 0, SEEK_END);
         file_size = ftell(f);
         fseek(f, 0, SEEK_SET);
