@@ -32,5 +32,35 @@ HTTP_parser http_parser(char *s)
     http.path = malloc(strlen(path) + 1);
     strcpy(http.path, path);
 
+    char *version = strsep(&s, "\r");
+    http.version = malloc(strlen(version) + 1);
+    strcpy(http.version, version);
+    s += 1; // '\n'
+
+    char key[100];
+    char *value;
+    char *line;
+    while (1)
+    {
+        line = strsep(&s, "\r");
+        if (strlen(line) == 0)
+            break;
+        strcpy(key, strsep(&line, ":"));
+        line += 1; // ' '
+        value = malloc(strlen(line) + 1);
+        strcpy(value, line);
+
+        if (strcmp(key, "Host") == 0)
+        {
+            http.host = value;
+        }
+        else
+        {
+            free(value);
+        }
+
+        s += 1; // '\n'
+    }
+
     return http;
 }

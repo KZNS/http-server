@@ -20,9 +20,9 @@
                    "Content-Length: %d\r\n" \
                    "\r\n"                   \
                    "%s"
-#define MESSAGE301 "HTTP/1.1 301 Moved Permanently\r\n"        \
-                   "Location: https://10.0.0.1/index.html\r\n" \
-                   "\r\n"                                      \
+#define MESSAGE301 "HTTP/1.1 301 Moved Permanently\r\n" \
+                   "Location: https://%s%s\r\n"         \
+                   "\r\n"                               \
                    ""
 #define MESSAGE206 "HTTP/1.1 206 Partial Content\r\n" \
                    "Content-Length: 11\r\n"           \
@@ -95,7 +95,26 @@ void *http_server()
     {
         int cfd = socket_accept(fd);
 
-        write(cfd, MESSAGE301, strlen(MESSAGE301));
+        char buf[BUF_SIZE + 1] = {0};
+        read(cfd, buf, BUF_SIZE);
+        HTTP_parser http = http_parser(buf);
+
+        // redirect
+        char newhost[100] = {0};
+        char *colonp;
+        colonp = strchr(http.host, ':');
+        if (colonp)
+        {
+            char tmp[90];
+            strncpy(tmp, http.host, colonp - http.host);
+            sprintf(newhost, "%s:%d", tmp, HTTPS_PORT);
+        }
+        else
+        {
+            strcpy(newhost, http.host);
+        }
+        sprintf(buf, MESSAGE301, newhost, http.path);
+        write(cfd, buf, strlen(buf));
 
         close(cfd);
     }
