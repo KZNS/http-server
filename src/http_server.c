@@ -134,12 +134,11 @@ void response(HTTP_parser http, int cfd, SSL *ssl)
             int left = http.range_left;
             int right = http.range_right == -1 ? fsize - 1 : http.range_right;
             int psize = right - left + 1;
-            psize = psize < 1000 ? psize : 1000;
             wbuf = malloc(strlen(MESSAGE206) + psize + 10);
             sprintf(wbuf, MESSAGE206, psize, left, left + psize - 1, fsize);
             int hsize = strlen(wbuf);
             memcpy(wbuf + hsize, fbuf + left, psize);
-            printf("206\n");
+            printf("206 with %d-%d\n", left, left + psize - 1);
 #ifdef ENABLE_HTTPS
             SSL_write(ssl, wbuf, hsize + psize);
 #else
