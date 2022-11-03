@@ -13,6 +13,7 @@
 #include "http_parser.h"
 #include "resource_menager.h"
 
+#define ENABLE_HTTPS
 #define HTTP_PORT 8080
 #define HTTPS_PORT 10443
 #define BUF_SIZE 8192
@@ -85,6 +86,80 @@ int socket_accept(int fd)
     return cfd;
 }
 
+void redirect(HTTP_parser http, int cfd)
+{
+    printf("GET %s\n", http.path);
+
+    char newhost[100] = {0};
+    char *colonp;
+    colonp = strchr(http.host, ':');
+    if (colonp)
+    {
+        char tmp[90];
+        strncpy(tmp, http.host, colonp - http.host);
+        sprintf(newhost, "%s:%d", tmp, HTTPS_PORT);
+    }
+    else
+    {
+        strcpy(newhost, http.host);
+    }
+    char buf[BUF_SIZE + 1] = {0};
+    sprintf(buf, MESSAGE301, newhost, http.path);
+    write(cfd, buf, strlen(buf));
+}
+void response(HTTP_parser http, int cfd, SSL *ssl)
+{
+    printf("GET %s\n", http.path);
+
+    char *fbuf;
+    int fsize = read_file(http.path + 1, &fbuf);
+    if (fsize >= 0)
+    {
+        char *wbuf;
+        if (http.range_raw == NULL)
+        {
+            wbuf = malloc(strlen(MESSAGE200) + fsize + 10);
+            sprintf(wbuf, MESSAGE200, fsize);
+            int hsize = strlen(wbuf);
+            memcpy(wbuf + hsize, fbuf, fsize);
+            printf("200\n");
+#ifdef ENABLE_HTTPS
+            SSL_write(ssl, wbuf, hsize + fsize);
+#else
+            write(cfd, wbuf, hsize + fsize);
+#endif
+        }
+        else
+        {
+            int left = http.range_left;
+            int right = http.range_right == -1 ? fsize - 1 : http.range_right;
+            int psize = right - left + 1;
+            psize = psize < 1000 ? psize : 1000;
+            wbuf = malloc(strlen(MESSAGE206) + psize + 10);
+            sprintf(wbuf, MESSAGE206, psize, left, left + psize - 1, fsize);
+            int hsize = strlen(wbuf);
+            memcpy(wbuf + hsize, fbuf + left, psize);
+            printf("206\n");
+#ifdef ENABLE_HTTPS
+            SSL_write(ssl, wbuf, hsize + psize);
+#else
+            write(cfd, wbuf, hsize + psize);
+#endif
+        }
+        free(fbuf);
+        free(wbuf);
+    }
+    else
+    {
+        printf("404\n");
+#ifdef ENABLE_HTTPS
+        SSL_write(ssl, MESSAGE404, strlen(MESSAGE404));
+#else
+        write(cfd, MESSAGE404, strlen(MESSAGE404));
+#endif
+    }
+}
+
 void *http_server()
 {
     int fd = socket_listen(HTTP_PORT);
@@ -97,22 +172,11 @@ void *http_server()
         read(cfd, buf, BUF_SIZE);
         HTTP_parser http = http_parser(buf);
 
-        // redirect
-        char newhost[100] = {0};
-        char *colonp;
-        colonp = strchr(http.host, ':');
-        if (colonp)
-        {
-            char tmp[90];
-            strncpy(tmp, http.host, colonp - http.host);
-            sprintf(newhost, "%s:%d", tmp, HTTPS_PORT);
-        }
-        else
-        {
-            strcpy(newhost, http.host);
-        }
-        sprintf(buf, MESSAGE301, newhost, http.path);
-        write(cfd, buf, strlen(buf));
+#ifdef ENABLE_HTTPS
+        redirect(http, cfd);
+#else
+        response(http, cfd, NULL);
+#endif
 
         close(cfd);
     }
@@ -192,44 +256,8 @@ void *https_server()
         char buf[BUF_SIZE + 1] = {0};
         SSL_read(ssl, buf, BUF_SIZE);
         HTTP_parser http = http_parser(buf);
-        printf("GET %s\n", http.path);
 
-        char *fbuf;
-        int fsize = read_file(http.path + 1, &fbuf);
-        if (fsize >= 0)
-        {
-            char *wbuf;
-            if (http.range_raw == NULL)
-            {
-                wbuf = malloc(strlen(MESSAGE200) + fsize + 10);
-                sprintf(wbuf, MESSAGE200, fsize);
-                int hsize = strlen(wbuf);
-                memcpy(wbuf + hsize, fbuf, fsize);
-                printf("200\n");
-                SSL_write(ssl, wbuf, hsize + fsize);
-            }
-            else
-            {
-                int left = http.range_left;
-                int right = http.range_right == -1 ? fsize - 1 : http.range_right;
-                int psize = right - left + 1;
-                wbuf = malloc(strlen(MESSAGE206) + psize + 10);
-                char *part = malloc(psize);
-                sprintf(wbuf, MESSAGE206, psize, left, right, fsize);
-                int hsize = strlen(wbuf);
-                memcpy(wbuf + hsize, fbuf + left, psize);
-                printf("206\n");
-                SSL_write(ssl, wbuf, hsize + psize);
-                free(part);
-            }
-            free(fbuf);
-            free(wbuf);
-        }
-        else
-        {
-            printf("404\n");
-            SSL_write(ssl, MESSAGE404, strlen(MESSAGE404));
-        }
+        response(http, 0, ssl);
 
         SSL_shutdown(ssl);
         SSL_free(ssl);
@@ -245,13 +273,15 @@ void *https_server()
 int main()
 {
     pthread_t th_http;
-    pthread_t th_https;
-
     pthread_create(&th_http, NULL, (void *)http_server, NULL);
+
+#ifdef ENABLE_HTTPS
+    pthread_t th_https;
     pthread_create(&th_https, NULL, (void *)https_server, NULL);
+    pthread_join(th_https, NULL);
+#endif
 
     pthread_join(th_http, NULL);
-    pthread_join(th_https, NULL);
 
     return 0;
 }
