@@ -14,8 +14,8 @@
 #include "resource_menager.h"
 
 #define ENABLE_HTTPS
-#define HTTP_PORT 8080
-#define HTTPS_PORT 10443
+#define HTTP_PORT 80
+#define HTTPS_PORT 443
 #define BUF_SIZE 8192
 #define MESSAGE200 "HTTP/1.1 200 OK\r\n"    \
                    "Content-Length: %d\r\n" \
