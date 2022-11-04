@@ -37,7 +37,10 @@ http 报文格式
 
 https 连接
 <https://blog.csdn.net/trw777/article/details/123692860>  
-HTTPS通信的C++实现
+HTTPS 通信的 C++ 实现
 <https://zhuanlan.zhihu.com/p/47925400>  
-刨根问底系列之https详细握手过程
+刨根问底系列之 https 详细握手过程
 <https://zhuanlan.zhihu.com/p/157461830>
+
+TCP “两次挥手”
+<https://cloud.tencent.com/developer/article/2026712>
